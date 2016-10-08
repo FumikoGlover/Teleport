@@ -14,7 +14,10 @@
 - (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(NSDictionary *)launchOptions
 {
     // Override point for customization after application launch.
-    [Teleport appDidLaunch:[[TeleportConfig alloc] init]];
+    TELEPORT_DEBUG = YES;
+    [Teleport startWithForwarder:
+     [SimpleHttpForwarder forwarderWithAggregatorUrl:@"http://ec2-52-0-101-215.compute-1.amazonaws.com:8080/"]
+     ];
     return YES;
 }
 							

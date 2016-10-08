@@ -7,6 +7,8 @@
 //
 
 #import "LogReaper.h"
+#import "Teleport.h"
+#import "TeleportUtils.h"
 
 static const int TP_LOG_REAPING_TIMER_INTERVAL = 5ull;
 static const char* const TP_LOG_REAPING_QUEUE_NAME = "com.teleport.LogReaping";
@@ -15,6 +17,8 @@ static const char* const TP_LOG_REAPING_QUEUE_NAME = "com.teleport.LogReaping";
     LogRotator *_logRotator;
     dispatch_queue_t _logReapingQueue;
     dispatch_source_t _timer;
+    NSUUID *_uuid;
+    id <Forwarder> _forwarder;
 }
 
 @end
@@ -28,12 +32,18 @@ static const char* const TP_LOG_REAPING_QUEUE_NAME = "com.teleport.LogReaping";
 
 }
 
-- (id) initWithLogRotator:(LogRotator *)logRotator
+- (id) initWithLogRotator:(LogRotator *)logRotator AndForwarder:(SimpleHttpForwarder *)forwarder
 {
     if((self = [super init]))
     {
         _logRotator = logRotator;
+        _forwarder = forwarder;
+
+        _uuid = [[UIDevice currentDevice] identifierForVendor];
+        [TeleportUtils teleportDebug:@"UUID: %@", _uuid];
         _logReapingQueue = dispatch_queue_create(TP_LOG_REAPING_QUEUE_NAME, DISPATCH_QUEUE_SERIAL);
+        [TeleportUtils teleportDebug:@"Reaping Queue: %@", _logReapingQueue];
+        
     }
     return self;
 }
@@ -47,7 +57,7 @@ static const char* const TP_LOG_REAPING_QUEUE_NAME = "com.teleport.LogReaping";
     {
         uint64_t interval = TP_LOG_REAPING_TIMER_INTERVAL * NSEC_PER_SEC;
         uint64_t leeway = 1ull * NSEC_PER_SEC;
-        dispatch_source_set_timer(_timer, dispatch_time(DISPATCH_TIME_NOW, 0), interval, leeway);
+        dispatch_source_set_timer(_timer, dispatch_time(DISPATCH_TIME_NOW, TP_LOG_REAPING_TIMER_INTERVAL * NSEC_PER_SEC / 2 ), interval, leeway);
         dispatch_source_set_event_handler(_timer, ^{
             [self reap];
         });
@@ -57,10 +67,45 @@ static const char* const TP_LOG_REAPING_QUEUE_NAME = "com.teleport.LogReaping";
 
 - (void)reap
 {
-    NSArray *sortedFiles = [self getSortedFilesWithSuffix:[_logRotator logPathSuffix] fromFolder:[_logRotator logDir]];
-    if (sortedFiles.count < 1 || [[[sortedFiles objectAtIndex:0] objectForKey:@"path"] isEqualToString:[_logRotator currentLogFilePath]])
+    [TeleportUtils teleportDebug:@"Log reaping woke up"];
+
+    if ([_logRotator currentLogFilePath] == nil) {
+        [TeleportUtils teleportDebug:@"Rotator is not ready yet. Nothing to be done"];
         return;
+    }
+
+    NSArray *sortedFiles = [self getSortedFilesWithSuffix:[_logRotator logPathSuffix] fromFolder:[_logRotator logDir]];
+    
+    [TeleportUtils teleportDebug:[NSString stringWithFormat:@"# of log files found: %lu", (unsigned long)sortedFiles.count]];
+
+    if (sortedFiles.count < 1)
+        return;
+
+    NSString *oldestFile = [[sortedFiles objectAtIndex:0] objectForKey:@"path"];
+    // when the oldest file is current log file, nothing to reap
+    if ([oldestFile isEqualToString:[_logRotator currentLogFilePath]])
+        return;
+
+    [TeleportUtils teleportDebug:[NSString stringWithFormat:@"Oldest log file: %@", oldestFile]];
+
+    // Only reap 1 log file, the oldest one, at a time
+    @try {
+        [_forwarder forwardLog:[NSData dataWithContentsOfFile:oldestFile] forDeviceId:[_uuid UUIDString]];
+    }
+    @catch (NSException *e) {
+        [TeleportUtils teleportDebug:[NSString stringWithFormat:@"Exception: %@", e]];
+    }
+    @finally {
+        // Delete log file after reapped
+        // Consider log file reaped even in case of exception for maximum robustness.
+        NSFileManager *manager = [NSFileManager defaultManager];
+        NSError *error = nil;
+        [manager removeItemAtPath:oldestFile error:&error];
         
+        if (error) {
+            [TeleportUtils teleportDebug:[NSString stringWithFormat:@"Exception: %@", error]];
+        }
+    }
 }
 
 //This is reusable method which takes folder path and returns sorted file list
@@ -69,7 +114,7 @@ static const char* const TP_LOG_REAPING_QUEUE_NAME = "com.teleport.LogReaping";
     NSError *error = nil;
     NSArray* filesArray = [[NSFileManager defaultManager] contentsOfDirectoryAtPath:folderPath error:&error];
     if (error) {
-        NSLog(@"%@", error);
+        [TeleportUtils teleportDebug:@"Error: %@", error];
         return [[NSArray alloc] init]; //return empty array in case of error
     }
 

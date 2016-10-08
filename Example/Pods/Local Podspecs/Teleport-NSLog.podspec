@@ -8,18 +8,11 @@
 #
 
 Pod::Spec.new do |s|
-  s.name             = "Teleport"
-  s.version          = "0.1.0"
-  s.summary          = "A short description of Teleport."
-  s.description      = <<-DESC
-                       An optional longer description of Teleport
-
-                       * Markdown format.
-                       * Don't worry about the indent, we strip it!
-                       DESC
+  s.name             = "Teleport-NSLog"
+  s.version          = "0.1.1"
+  s.summary          = "Remote logging for iOS. Send NSLog messages to backend server."
   s.homepage         = "https://github.com/kennethjiang/Teleport"
-  # s.screenshots     = "www.example.com/screenshots_1", "www.example.com/screenshots_2"
-  s.license          = 'Apache 2.0'
+  s.license          = 'MIT'
   s.author           = { "Kenneth Jiang" => "kenneth.jiang@gmail.com" }
   s.source           = { :git => "https://github.com/kennethjiang/Teleport.git", :tag => s.version.to_s }
   # s.social_media_url = 'https://twitter.com/<TWITTER_USERNAME>'
@@ -27,12 +20,13 @@ Pod::Spec.new do |s|
   s.platform     = :ios, '7.0'
   s.requires_arc = true
 
-  s.source_files = 'Pod/Classes'
+  s.source_files = 'Pod/Classes/*.{h,m}', 'Pod/Classes/**/*.{h,m}'
   s.resource_bundles = {
     'Teleport' => ['Pod/Assets/*.png']
   }
 
+  s.library = 'z'
   # s.public_header_files = 'Pod/Classes/**/*.h'
-  # s.frameworks = 'UIKit', 'MapKit'
+  #s .frameworks = 'UIKit', 'MapKit'
   # s.dependency 'AFNetworking', '~> 2.3'
 end

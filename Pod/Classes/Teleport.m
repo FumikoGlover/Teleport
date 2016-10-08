@@ -12,9 +12,12 @@
 #import "LogReaper.h"
 
 
+BOOL TELEPORT_DEBUG = NO;
+
 @interface Teleport() {
     LogRotator *_logRotator;
     LogReaper *_logReaper;
+    id <Forwarder> _forwarder;
 }
 
 @end
@@ -22,27 +25,35 @@
 
 IMPLEMENT_EXCLUSIVE_SHARED_INSTANCE(Teleport)
 
-+ (void)appDidLaunch:(TeleportConfig *)config
++ (void) startWithForwarder:(id <Forwarder>)forwarder;
 {
-    [[Teleport sharedInstance] startWithConfig:config];
+    Teleport *instance = [Teleport sharedInstance];
+    [instance startWithForwarder:forwarder];
 }
 
 #pragma mark - Lifecycle -
 
-- (id) init
-{
-    if((self = [super init]))
-    {
-        _logRotator = [[LogRotator alloc] init];
-        _logReaper = [[LogReaper alloc] initWithLogRotator:_logRotator];
-    }
-    return self;
-}
+- (void)startWithForwarder:(id <Forwarder>)forwarder {
+    _forwarder = forwarder;
 
-- (void)startWithConfig:(TeleportConfig *)config
-{
-    [_logRotator startLogRotation];
-    [_logReaper startLogReaping];
+    BOOL shouldTeleport = NO;
+
+    if (TELEPORT_DEBUG) { //turned on teleport we are debugging Teleport
+        shouldTeleport = YES;
+    }
+    else {
+#ifndef DEBUG   //Send to backend only when it's in production mode
+        shouldTeleport = YES;
+#endif
+    }
+    
+    if (shouldTeleport) {
+        _logRotator = [[LogRotator alloc] init];
+        _logReaper = [[LogReaper alloc] initWithLogRotator:_logRotator AndForwarder:_forwarder];
+        
+        [_logRotator startLogRotation];
+        [_logReaper startLogReaping];
+    }
 }
 
 @end
